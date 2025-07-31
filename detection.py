@@ -6,19 +6,24 @@ import pytesseract
 CASCADE_PATH = "model/haarcascade_russian_plate_number.xml"
 cascade = cv2.CascadeClassifier(CASCADE_PATH)
 
-# Remove hardcoded Windows path for Tesseract
-# pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-# On Render/Linux, pytesseract will find the tesseract binary automatically (installed via Aptfile)
+# On Render/Linux, pytesseract will automatically find the binary (installed via Aptfile)
 
 webcam_running = False
 webcam_cap = None
 detected_plates = []
 
-# --- OCR Helper ---
+# --- OCR Helper with fallback ---
 def extract_plate_text(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    text = pytesseract.image_to_string(gray, config='--oem 3 --psm 7')
-    return text.strip()
+    try:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        text = pytesseract.image_to_string(gray, config='--oem 3 --psm 7')
+        return text.strip()
+    except pytesseract.pytesseract.TesseractNotFoundError:
+        print("[WARNING] Tesseract not found. OCR skipped.")
+        return ""  # Skip OCR if Tesseract is missing
+    except Exception as e:
+        print(f"[ERROR] OCR failed: {e}")
+        return ""  # Skip OCR errors safely
 
 # --- Blur helper ---
 def blur_region(frame, x, y, w, h):
@@ -53,7 +58,7 @@ def process_image(input_path, output_path):
         plate_text = extract_plate_text(plate_roi)
         if plate_text:
             detected_plates.append(plate_text)
-        # Blur the plate region
+        # Blur the plate region (always applied)
         image = blur_region(image, x, y, w, h)
 
     cv2.imwrite(output_path, image)
@@ -80,7 +85,7 @@ def process_video(input_path, output_path):
             plate_text = extract_plate_text(plate_roi)
             if plate_text and plate_text not in detected_plates:
                 detected_plates.append(plate_text)
-            # Blur plate
+            # Blur plate (even if OCR fails)
             frame = blur_region(frame, x, y, w, h)
 
         frames.append(frame)
